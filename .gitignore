@@ -1,0 +1,36 @@
+# Secrets / local config — NEVER commit
+config.local.php
+.env
+.env.local
+*.key
+*.pem
+secrets/
+
+# Composer (when added later)
+vendor/
+composer.phar
+
+# Node (if frontend tooling added later)
+node_modules/
+npm-debug.log*
+
+# PHP runtime
+*.log
+error.log
+.opcache/
+
+# IDE / OS noise
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build output
+dist/
+build/
+
+# Local PHP overrides (per-directory PHP config — keep server-side only)
+.user.ini
