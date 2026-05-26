@@ -1,0 +1,21 @@
+# Block execution of any server-side script in the uploads directory.
+# Even if an attacker manages to upload a .php (or .phtml, .phar, etc.)
+# disguised as an image, Apache will refuse to execute it here.
+
+<FilesMatch "\.(php|phar|phtml|php[0-9]|pl|py|jsp|asp|sh|cgi)$">
+    Require all denied
+</FilesMatch>
+
+# Belt-and-braces: disable the PHP engine for this directory entirely.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+# Don't list directory contents if no index file is present.
+Options -Indexes -ExecCGI

@@ -34,3 +34,8 @@ build/
 
 # Local PHP overrides (per-directory PHP config — keep server-side only)
 .user.ini
+
+# User-uploaded images — keep the uploads/ folder and its .htaccess in git,
+# but never commit the actual uploaded files
+uploads/*
+!uploads/.htaccess
