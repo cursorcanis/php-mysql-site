@@ -1,0 +1,21 @@
+# Alea Lab Vault — Apache hardening for /lab (IONOS Apache + PHP 8.4 FastCGI)
+
+# --- Block web access to developer docs, schema dumps, and logs ---
+# These files belong in the repo, not served to the public. Serving
+# CHANGELOG.md / *.sql leaks the DB name, paths, and infra details.
+<FilesMatch "\.(md|sql|log|ini|sh|bak|dist|example)$">
+    Require all denied
+</FilesMatch>
+
+# --- Block dotfiles (.git, .gitignore, .user.ini, .htaccess itself) ---
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# --- Block one-time migration / debug scripts if ever uploaded ---
+<FilesMatch "^(migrate-.*|debug)\.php$">
+    Require all denied
+</FilesMatch>
+
+# --- Prevent directory listing ---
+Options -Indexes

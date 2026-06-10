@@ -6,6 +6,28 @@ Format: dated entries, newest at the top. Each entry: what changed, where, why.
 
 ---
 
+## 2026-06-02 — Phase 1 deployed to live server (file type support)
+
+### Database migration run on live DB
+- Ran in IONOS phpMyAdmin against database `your_db_name`:
+  `ALTER TABLE images ADD COLUMN file_type ENUM('image','document','file') NOT NULL DEFAULT 'image' AFTER mime_type;`
+- First attempt failed with `#1046 - No database selected` (ran from server-level SQL tab); fixed by selecting the database first, then re-running. Succeeded (empty result set).
+
+### Updated app files uploaded to /lab via FileZilla
+- `config.php` (1,729 B) — MAX_FILE_SIZE 10 MB → 100 MB, added `.txt`/`.docx`/`.doc` MIME types + extensions, `get_file_type()` helper.
+- `dashboard.php` (37,699 B) — multi-type upload, stores `file_type`, inline previews (img / `<pre>` for txt / Google Docs Viewer for docx).
+- Verified both transferred byte-for-byte (remote sizes match local).
+
+### Server hardening
+- Added `.htaccess` to block web access to `.md`, `.sql`, `.log`, `.ini`, dotfiles, and `migrate-*.php`/`debug.php`, and disabled directory indexing. Prompted by `CHANGELOG.md`/`README.md` being publicly reachable at `lab.alfredoalea.com/CHANGELOG.md` (leaked DB name, contract, infra notes).
+- `debug.php` and `migrate-phase1.php` confirmed NOT present on server `/lab`.
+- TODO: delete `CHANGELOG.md` and `README.md` from server `/lab`; consider removing web-readable `error.log`.
+
+### Still pending
+- End-to-end test on live: upload image / .txt / .docx and confirm previews, tags, sharing, downloads.
+
+---
+
 ## 2026-05-25 — Initial setup
 
 ### Hosting environment audited

@@ -10,19 +10,19 @@ $upload_success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload') {
     if (!verify_csrf($_POST['csrf_token'] ?? '')) {
         $upload_error = 'Invalid request token.';
-    } elseif (empty($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE) {
+    } elseif (empty($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
         $upload_error = 'No file selected.';
-    } elseif ($_FILES['image']['error'] !== UPLOAD_ERR_OK) {
-        $upload_error = 'Upload error: ' . $_FILES['image']['error'];
-    } elseif ($_FILES['image']['size'] > MAX_FILE_SIZE) {
-        $upload_error = 'File exceeds 10 MB limit.';
+    } elseif ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+        $upload_error = 'Upload error: ' . $_FILES['file']['error'];
+    } elseif ($_FILES['file']['size'] > MAX_FILE_SIZE) {
+        $upload_error = 'File exceeds ' . (MAX_FILE_SIZE / 1024 / 1024) . ' MB limit.';
     } else {
-        $tmp = $_FILES['image']['tmp_name'];
-        $origName = basename($_FILES['image']['name']);
+        $tmp = $_FILES['file']['tmp_name'];
+        $origName = basename($_FILES['file']['name']);
         $ext  = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
         $mime = mime_content_type($tmp);
         if (!in_array($mime, ALLOWED_MIME, true) || !in_array($ext, ALLOWED_EXT, true)) {
-            $upload_error = 'Invalid file type. Allowed: JPG, PNG, GIF, WEBP.';
+            $upload_error = 'Invalid file type. Allowed: JPG, PNG, GIF, WEBP, TXT, DOCX, DOC.';
         } else {
             $newName = bin2hex(random_bytes(16)) . '.' . $ext;
             $dest = UPLOAD_DIR . $newName;
@@ -30,15 +30,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
             if (move_uploaded_file($tmp, $dest)) {
                 $title = trim($_POST['title'] ?? '');
                 $notes = trim($_POST['notes'] ?? '');
-                $stmt = $db->prepare('INSERT INTO images (filename,original_name,mime_type,file_size,title,notes) VALUES (?,?,?,?,?,?)');
-                $stmt->execute([$newName, $origName, $mime, $_FILES['image']['size'], $title ?: null, $notes ?: null]);
+                $fileType = get_file_type($mime, $ext);
+                $stmt = $db->prepare('INSERT INTO images (filename,original_name,mime_type,file_size,file_type,title,notes) VALUES (?,?,?,?,?,?,?)');
+                $stmt->execute([$newName, $origName, $mime, $_FILES['file']['size'], $fileType, $title ?: null, $notes ?: null]);
                 $newId = (int)$db->lastInsertId();
                 $tagIds = array_filter(array_map('intval', explode(',', $_POST['tag_ids'] ?? '')));
                 if ($tagIds) {
                     $ts = $db->prepare('INSERT IGNORE INTO image_tags (image_id,tag_id) VALUES (?,?)');
                     foreach ($tagIds as $tid) $ts->execute([$newId, $tid]);
                 }
-                $upload_success = 'Image uploaded!';
+                $upload_success = 'File uploaded!';
             } else {
                 $upload_error = 'Failed to save file.';
             }
@@ -360,6 +361,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;
                data-notes="<?= htmlspecialchars(addslashes($img['notes'] ?? '')) ?>"
                data-date="<?= $img['uploaded_at'] ?>"
                data-size="<?= $img['file_size'] ?>"
+               data-mime="<?= htmlspecialchars($img['mime_type'] ?? 'image/jpeg') ?>"
                data-src="uploads/<?= htmlspecialchars($img['filename']) ?>"
                data-tags="<?= htmlspecialchars(json_encode(array_map(fn($t)=>['id'=>(int)$t['id'],'name'=>$t['name'],'color'=>$t['color']], $img['tags']))) ?>"
                onclick="openDetail(this)">
@@ -398,7 +400,7 @@ body::before{content:'';position:fixed;inset:0;z-index:0;
 <div class="overlay" id="uploadOverlay" onclick="overlayClick(event,'uploadOverlay')">
   <div class="sheet">
     <div class="sheet-header">
-      <span class="sheet-title">Upload Image</span>
+      <span class="sheet-title">Upload File</span>
       <button class="btn-close" onclick="closeOverlay('uploadOverlay')">✕</button>
     </div>
     <form method="POST" enctype="multipart/form-data" id="uploadForm">
@@ -407,17 +409,17 @@ body::before{content:'';position:fixed;inset:0;z-index:0;
       <input type="hidden" name="tag_ids" id="selectedTagIds" value="">
       <img id="capture-preview" alt="Preview">
       <div class="capture-zone" id="captureZone">
-        <input type="file" name="image" id="fileInput" accept="image/*" capture="environment" required>
-        <span class="capture-icon">📷</span>
-        <div class="ctext"><strong>Tap to take photo or choose file</strong>JPG, PNG, GIF, WEBP · max 10 MB</div>
+        <input type="file" name="file" id="fileInput" accept=".jpg,.jpeg,.png,.gif,.webp,.txt,.doc,.docx" required>
+        <span class="capture-icon">📄</span>
+        <div class="ctext"><strong>Tap to choose file</strong>Images, documents, text · max 100 MB</div>
       </div>
       <div class="field">
         <label>Title (optional)</label>
-        <input type="text" name="title" placeholder="e.g. ComfyUI render">
+        <input type="text" name="title" placeholder="e.g. Project Notes">
       </div>
       <div class="field">
         <label>Notes (optional)</label>
-        <textarea name="notes" rows="2" placeholder="e.g. Pony SDXL cfg 7"></textarea>
+        <textarea name="notes" rows="2" placeholder="e.g. Q2 planning docs"></textarea>
       </div>
       <div class="field">
         <label>Tags</label>
@@ -438,10 +440,15 @@ body::before{content:'';position:fixed;inset:0;z-index:0;
 <div class="overlay" id="detailOverlay" onclick="overlayClick(event,'detailOverlay')">
   <div class="sheet">
     <div class="sheet-header">
-      <span class="sheet-title" id="detailTitle">Image</span>
+      <span class="sheet-title" id="detailTitle">File</span>
       <button class="btn-close" onclick="closeOverlay('detailOverlay')">✕</button>
     </div>
-    <img class="detail-img" id="detailImg" src="" alt="">
+    <!-- Image preview -->
+    <img class="detail-img" id="detailImg" src="" alt="" style="display:none">
+    <!-- Text file preview -->
+    <pre id="detailText" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:1rem;overflow:auto;max-height:300px;font-size:.75rem;color:var(--text);white-space:pre-wrap;word-wrap:break-word;margin-bottom:1rem"></pre>
+    <!-- Document file (DOCX) preview -->
+    <iframe id="detailDocIframe" style="display:none;width:100%;height:400px;border:1px solid var(--border);border-radius:6px;margin-bottom:1rem"></iframe>
     <div class="detail-meta" id="detailMeta"></div>
     <div class="detail-tags" id="detailTagsRow"></div>
     <div class="field">
@@ -462,11 +469,11 @@ body::before{content:'';position:fixed;inset:0;z-index:0;
       </div>
     </div>
     <a id="detailDownload" href="#" download class="btn-secondary">↓ Download</a>
-    <form method="POST" onsubmit="return confirm('Delete this image permanently?')">
+    <form method="POST" onsubmit="return confirm('Delete this file permanently?')">
       <input type="hidden" name="action" value="delete">
       <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
       <input type="hidden" name="image_id" id="detailDeleteId" value="">
-      <button type="submit" class="btn-danger-full">✕ Delete Image</button>
+      <button type="submit" class="btn-danger-full">✕ Delete File</button>
     </form>
   </div>
 </div>
@@ -568,13 +575,38 @@ document.getElementById('uploadForm').addEventListener('submit', function(){
 // Detail
 function openDetail(card){
   const tags = JSON.parse(card.dataset.tags||'[]');
+  const mime = card.dataset.mime || 'image/jpeg';
+  const isImage = mime.startsWith('image/');
+  const isText = mime === 'text/plain';
+  const isDoc = mime.includes('wordprocessingml') || mime === 'application/msword';
+
   activeImage = {
     id: card.dataset.id, src: card.dataset.src,
     title: card.dataset.title||card.dataset.orig,
-    notes: card.dataset.notes, tags, orig: card.dataset.orig
+    notes: card.dataset.notes, tags, orig: card.dataset.orig, mime
   };
+
   document.getElementById('detailTitle').textContent = activeImage.title||activeImage.orig;
-  document.getElementById('detailImg').src = activeImage.src;
+
+  // Hide all preview types first
+  document.getElementById('detailImg').style.display = 'none';
+  document.getElementById('detailText').style.display = 'none';
+  document.getElementById('detailDocIframe').style.display = 'none';
+
+  // Show appropriate preview
+  if(isImage){
+    document.getElementById('detailImg').src = activeImage.src;
+    document.getElementById('detailImg').style.display = 'block';
+  } else if(isText){
+    document.getElementById('detailText').style.display = 'block';
+    fetch(activeImage.src).then(r=>r.text()).then(txt=>
+      document.getElementById('detailText').textContent = txt.substring(0, 10000)
+    ).catch(()=> document.getElementById('detailText').textContent = '[Unable to load text file]');
+  } else if(isDoc){
+    document.getElementById('detailDocIframe').style.display = 'block';
+    document.getElementById('detailDocIframe').src = `https://docs.google.com/gviz/viewer?url=${encodeURIComponent(window.location.origin + '/' + activeImage.src)}&embedded=true`;
+  }
+
   document.getElementById('detailMeta').textContent =
     new Date(card.dataset.date).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) +
     ' · ' + (parseInt(card.dataset.size)>1048576 ? (card.dataset.size/1048576).toFixed(1)+' MB' : Math.round(card.dataset.size/1024)+' KB');
