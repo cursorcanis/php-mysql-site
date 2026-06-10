@@ -6,6 +6,43 @@ Format: dated entries, newest at the top. Each entry: what changed, where, why.
 
 ---
 
+## 2026-06-10 — Laravel 13 rewrite started (branch `laravel-migration`)
+
+Decision: migrate the flat-PHP Vault to **Laravel 13** (full rewrite), scaffolded
+into the `vault/` subfolder. The live flat app at the repo root is left untouched
+during the migration. Deploy target stays IONOS; code transfer via FileZilla/SFTP,
+but `composer install` + `php artisan migrate` to be run over **SSH** on the server.
+
+### Local toolchain setup (was missing)
+- WinGet PHP 8.5 had no `php.ini` → created one enabling `pdo_mysql`, `pdo_sqlite`,
+  `mbstring`, `openssl`, `curl`, `fileinfo`, `gd` (tokenizer is compiled-in).
+- Installed Composer (`composer.phar` + `composer.bat` shim on PATH).
+
+### Laravel app (`vault/`)
+- Migrations: `files` (ports `images` + Phase 1 `file_type`), `tags`, `image_tags` pivot.
+- Models `File`/`Tag` with `belongsToMany`; `TagSeeder` seeds the 5 starter tags.
+- Controllers: Auth, Dashboard, File, Api (single `/api` dispatcher mirroring old
+  `api.php`), Share. Single-user auth via `.env` (`VAULT_USER`/`VAULT_PASS_HASH`) +
+  `VaultAuth` middleware. No `users` table / Breeze.
+- **Security upgrade:** uploads now live in private `storage/` and are served only
+  through access-controlled routes keyed on the random filename — uploaded files can
+  never be web-executed (retires the old `uploads/.htaccess` workaround).
+- Blade views port the existing dark UI (login, dashboard, share); `<style>` blocks
+  wrapped in `@verbatim` so `@media`/`@keyframes` don't parse as directives. PWA
+  assets (`manifest.json`, `sw.js`, `icons/`) copied to `public/`.
+- Local dev uses SQLite; production uses MySQL via `.env`. Dev login: `alfredo` / `labvault`.
+
+### Verification
+- 5 feature tests (`tests/Feature/VaultTest.php`) — login, upload, tag, search,
+  share-token, file serving, delete, disallowed-type rejection — all passing (35 assertions).
+- Real HTTP smoke test: login → 302 → dashboard 200 with gallery + upload form.
+
+### Not yet done
+- Deploy to IONOS (point `lab.alfredoalea.com` docroot → `vault/public`; production `.env`).
+- Migrate live `images`/`tags` rows + upload files into the new structure.
+
+---
+
 ## 2026-06-02 — Phase 1 deployed to live server (file type support)
 
 ### Database migration run on live DB
